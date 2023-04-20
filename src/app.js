@@ -1,133 +1,44 @@
-const http = require('http');
-const { urlMatchId } = require('./modules/urlMatchId');
-const { getUsers, getUserById, addUser, editUser, deleteUser } = require('./modules/users');
-const { getBooks, getBookById, addBook, editBook, takeBook, returnBook, deleteBook } = require('./modules/books');
+const fs = require('fs');
+const swaggerUi = require('swagger-ui-express');
 
-const port = 3003;
-const host = '127.0.0.1';
+const express = require('express');
+const dotenv = require('dotenv');
+const bodyParser = require('body-parser');
+const getDb = require('./db/database');
+const cors = require('cors');
 
-const bodyPOSTProcessing = (body, url) => {
-    console.log(url);
-    console.log(body);
-    if (url === '/add-user') {
-        console.log('Добавить пользователя');
-        addUser(body);
-    }
-    if (url === '/add-book') {
-        console.log('Добавить книгу');
-        addBook(body);
-    }
-}
+const routes = require('./routes');
+const dbStatus = require('./middlewares/dbstatus')
 
-const bodyPUTProcessing = (body, url) => {
-    console.log(url);
-    console.log(body);
-    if (url === '/edit-user') {
-        console.log('Редактировать пользователя');
-        editUser(body);
-    }
-    if (url === '/edit-book') {
-        console.log('Редактировать книгу');
-        editBook(body);
-    }
-    if (url === '/take-book') {
-        console.log('Взять книгу');
-        takeBook(body);
-    }
-    if (url === '/return-book') {
-        console.log('Вернуть книгу');
-        returnBook(body);
-    }
-}
+const swaggerFile = JSON.parse(fs.readFileSync('./src/swagger/output.json'));
 
-const server = http.createServer((request, response) => {
-    const addr = new URL(request.url, 'http://127.0.0.1');
+dotenv.config();
+const { 
+  PORT = 3005,
+  MONGODB_URI
+} = process.env;
 
-    if (request.method === 'POST') {
-        let body = '';
-        request.on('data', chunk => {
-            body += chunk.toString();
-        });
-        request.on('end', () => {
-            bodyPOSTProcessing(body, request.url);
-            response.end('ok');
-        });
-        return;
-    }
+// to get DB
+getDb(MONGODB_URI);
 
-    if (request.method === 'PUT') {
-        let body = '';
-        request.on('data', chunk => {
-            body += chunk.toString();
-        });
-        request.on('end', () => {
-            bodyPUTProcessing(body, request.url);
-            response.end('ok');
-        });
-        return;
-    }
+const app = express();
 
-    if (request.method === 'DELETE') {
-        const foundBookId = urlMatchId(request.url, 'delete-book');
-        const foundUserId = urlMatchId(request.url, 'delete-user');
-        if (foundBookId) {
-            deleteBook(foundBookId);
-        }
-        if (foundUserId) {
-            deleteUser(foundUserId);
-        }
-        response.end('ok');
-    }
+// to parse json
+app.use(bodyParser.json());
 
-    if (request.method === 'GET') {
-        const foundUserId = urlMatchId(request.url, 'users');
-        const foundBookId = urlMatchId(request.url, 'books');
+// to add CORS contraints
+app.use(cors());
 
-        if (request.url === '/users') {
-            response.statusCode = 200;
-            response.statusMessage = "OK";
-            response.setHeader("Content-Type", "application/json; charset=utf-8");
-            response.write(getUsers());
-            response.end();
-            return;
-        }
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
-        if (request.url === '/books') {
-            response.statusCode = 200;
-            response.statusMessage = "OK";
-            response.setHeader("Content-Type", "application/json; charset=utf-8");
-            response.write(getBooks());
-            response.end();
-            return;
-        }
+// healthcheck endpoint
+app.use('/health', require('express-healthcheck')({
+  healthy: dbStatus
+}));
 
-        if (foundUserId) {
-            response.statusCode = 200;
-            response.statusMessage = "OK";
-            response.setHeader("Content-Type", "application/json; charset=utf-8");
-            response.write(getUserById(foundUserId), "utf8");
-            response.end();
-            return;
-        }
+// routers
+app.use('/', routes);
 
-        if (foundBookId) {
-            response.statusCode = 200;
-            response.statusMessage = "OK";
-            response.setHeader("Content-Type", "application/json; charset=utf-8");
-            response.write(getBookById(foundBookId), "utf8");
-            response.end();
-            return;
-        }
-
-        response.statusCode = 500;
-        response.statusMessage = "Internal Server Eror";
-        response.header = "Content-Type: text/plain";
-        response.write(" ");
-        response.end();
-    }
-
-});
-
-server.listen(port, () => {
-    console.log(`Сервер запущен по адресу http://${host}:${port}`);
-});
+app.listen(PORT, () => {
+  console.log(`Server has started on http://localhost:${PORT}/`);
+})

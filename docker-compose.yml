@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api.dockerfile
+    env_file:
+      - .env
+    environment:
+      - PORT=${PORT?Variable not set}
+      - MONGODB_URI=mongodb://mongo/users
+    ports:
+      - ${PORT?Variable not set}:${PORT?Variable not set}
+    depends_on:
+      mongo:
+        condition: service_started
+    command: sh -c "node src/swagger/index.js && node src/app.js"
+
+  mongo:
+    image: mongo
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:
